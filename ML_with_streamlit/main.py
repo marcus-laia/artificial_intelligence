@@ -1,114 +1,89 @@
-import numpy as np
 import streamlit as st
-import matplotlib.pyplot as plt
+from model_interface import Model
+from matplotlib.figure import Figure
 
-from sklearn import datasets
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from sklearn.decomposition import PCA
+class PageInterface:
+    def __init__(self) -> None:
+        self.available_model_types = ("Classification",)
+        self.model = None
 
-st.title("Your Machine Learning Platform")
-st.write("#### Version 0.0")
+    @staticmethod
+    def get_model_object(model_type: str) -> Model:
+        mod = __import__(model_type.lower(), fromlist=[model_type])
+        cls = getattr(mod, model_type)
+        return cls
 
-video_url = 'https://www.youtube.com/watch?v=Klqn--Mu2pE'
-st.write("- Up to this point I followed the tutorial on [this video](%s),\
-          but as always I have some ideas to go beyond" % video_url)
+    def set_model(self, model_type: str) -> None:
+        self.model = self.get_model_object(model_type)()
 
-st.markdown("""
-- Next steps:
-  - Code refactoring
-  - New dataset option: create your own with a set of parameters
-  - More options to choose what to see in the plot (not necessarily PCA)
-  - More information about the algorithm
-  - More parameters to set
-  - Other types of algorithms (clustering, regression)
-  - Section of resources to learn about the algorithm
-""")
+    @staticmethod
+    def write_intro_section():
+        st.title("Your Machine Learning Platform")
+        st.write("#### Version 0.0")
 
-st.subheader("Algorithm Info")
+        video_url = 'https://www.youtube.com/watch?v=Klqn--Mu2pE'
+        st.write("- Up to this point I followed the tutorial on [this video](%s),\
+                but as always I have some ideas to go beyond" % video_url)
 
-dataset_name = st.sidebar.selectbox("Select Dataset", ('Iris', 'Breast Cancer', 'Wine'))
+        st.markdown("""
+        - Next steps:
+        - Code refactoring
+        - New dataset option: create your own with a set of parameters
+        - More options to choose what to see in the plot (not necessarily PCA)
+        - More information about the algorithm
+        - More parameters to set
+        - Other types of algorithms (clustering, regression)
+        - Section of resources to learn about the algorithm
+        """)
 
-classifier_name = st.sidebar.selectbox("Select Classifier", ('KNN', 'SVM', 'Random Forest'))
+    @staticmethod
+    def write_algorithm_section(model_info: str, dataset_info: str, fig: Figure):
+        st.subheader("Algorithm Info")
+        st.markdown(model_info)
+        st.pyplot(fig)
+        st.subheader("Dataset Info")
+        st.markdown(dataset_info)
 
-def get_dataset(dataset_name):
-    if dataset_name == 'Iris':
-        data = datasets.load_iris()
-    elif dataset_name == 'Breast Cancer':
-        data = datasets.load_breast_cancer()
-    else:
-        data = datasets.load_wine()
+    def build_general_sidebar(self):
+        model_type = st.sidebar.selectbox("Select Model Type", self.available_model_types)
 
-    X = data.data
-    y = data.target
+        self.set_model(model_type)
 
-    return X, y#, data.DESCR
+        dataset_name = st.sidebar.selectbox("Select Dataset", self.model.get_available_datasets())
+        model_name = st.sidebar.selectbox("Select Model", self.model.get_available_models())
 
-X, y = get_dataset(dataset_name)
+        return dataset_name, model_name
 
-st.write("shape of dataset:", X.shape)
-st.write("number of classes:", len(np.unique(y)))
+    def build_model_sidebar(self, model_sidebar: dict) -> dict:
+        params = {}
+        for widget, configs in model_sidebar.items():
+            for config in configs:
+                params[config['label']] = getattr(st.sidebar, widget)(**config)
 
-def add_parameter_ui(classifier_name):
-    params = dict()
-
-    if classifier_name == 'KNN':
-        K = st.sidebar.slider("K", 1, 15)
-        params['K'] = K
-    elif classifier_name == 'SVM':
-        C = st.sidebar.slider("C", 0.01, 10.0)
-        params['C'] = C
-    else:
-        max_depth = st.sidebar.slider("max_depth", 2, 15)
-        n_estimators = st.sidebar.slider("n_estimators", 1, 100)
-        params['max_depth'] = max_depth
-        params['n_estimators'] = n_estimators
+        return params
     
-    return params
+    def build_interface(self):
 
-params = add_parameter_ui(classifier_name)
+        self.write_intro_section()
 
-def get_classifier(classifier_name, params):
-    if classifier_name == 'KNN':
-        classifier = KNeighborsClassifier(n_neighbors=params['K'])
-    elif classifier_name == 'SVM':
-        classifier = SVC(C=params['C'])
-    else:
-        classifier = RandomForestClassifier(n_estimators=params['n_estimators'],
-                                            max_depth=params['max_depth'],
-                                            random_state=150223)
-    
-    return classifier
+        dataset_name, model_name = self.build_general_sidebar()
 
-classifier = get_classifier(classifier_name, params)
+        self.model.set_dataset(dataset_name)
+        self.model.set_model(model_name)
 
-# classification
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=150223)
+        model_sidebar = self.model.get_sidebar()
 
-classifier.fit(X_train, y_train)
+        params = self.build_model_sidebar(model_sidebar)
 
-y_pred = classifier.predict(X_test)
-acc = accuracy_score(y_test, y_pred)
+        self.model.set_params(params)
 
-st.write(f"classifier = {classifier_name}")
-st.write(f"accuracy = {acc}")
+        model_info = self.model.get_model_info()
+        fig = self.model.get_figure()
 
-# plot
-pca = PCA(2)
-X_projected = pca.fit_transform(X)
+        dataset_info = self.model.get_dataset_info()
 
-x1 = X_projected[:, 0]
-x2 = X_projected[:, 1]
+        self.write_algorithm_section(model_info, dataset_info, fig)
 
-fig = plt.figure()
-plt.scatter(x1, x2, c=y, alpha=0.8, cmap='viridis')
-
-plt.xlabel("Principal Component 1")
-plt.ylabel("Principal Component 2")
-
-plt.colorbar()
-
-st.pyplot(fig)
+if __name__ == "__main__":
+    page = PageInterface()
+    page.build_interface()
