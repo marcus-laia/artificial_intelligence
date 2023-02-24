@@ -3,7 +3,6 @@ from matplotlib.figure import Figure
 
 
 class Model(ABC):
-
     @abstractmethod
     def get_available_datasets(self) -> tuple:
         """Get the available datasets for each type of machine learning algorithm."""
